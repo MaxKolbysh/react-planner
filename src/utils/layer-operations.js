@@ -18,6 +18,10 @@ export function addLine(layer, type, x0, y0, x1, y1, catalog, properties = {}) {
     ({layer, vertex: v0} = addVertex(layer, x0, y0, 'lines', lineID));
     ({layer, vertex: v1} = addVertex(layer, x1, y1, 'lines', lineID));
 
+
+    console.log("AddLine Add vertex", v0.toJS());
+    console.log("AddLine Add vertex", v1.toJS());
+
     line = catalog.factoryElement(type, {
       id: lineID,
       name: NameGenerator.generateName('lines', catalog.getIn(['elements', type, 'info', 'title'])),
@@ -25,8 +29,11 @@ export function addLine(layer, type, x0, y0, x1, y1, catalog, properties = {}) {
       type
     }, properties);
 
+    console.log("Addline", line.toJS());
+
     layer.setIn(['lines', lineID], line);
   });
+
 
   return {layer, line};
 }
@@ -47,20 +54,129 @@ export function replaceLineVertex(layer, lineID, vertexIndex, x, y) {
 }
 
 export function removeLine(layer, lineID) {
+
+  console.log("lineID", lineID);
+
   let line = layer.getIn(['lines', lineID]);
+
+  let toRemoveLines = [];
+
+  // console.log("Remove Selected Line", lineID);
 
   layer = layer.withMutations(layer => {
     unselect(layer, 'lines', lineID);
+
+    console.log("line",line.toJS());
+
     line.holes.forEach(holeID => removeHole(layer, holeID));
     layer.deleteIn(['lines', line.id]);
-    line.vertices.forEach(vertexID => removeVertex(layer, vertexID, 'lines', line.id));
+
+
+    line.vertices.forEach((vertexID, ind) => {
+      // console.log("-->Remove Vertex of selected line", ind, vertexID);
+      let vertexToFind = layer.vertices.get(vertexID);
+
+      vertexToFind.lines.forEach(
+        lineX => {
+          if (lineID !== lineX) {
+            // console.log("------>matched line", lineX);
+            let lineRemove = layer.getIn(['lines', lineX]);
+
+            if (lineRemove !== undefined) {
+              lineRemove.vertices.forEach(
+                (vertexRemove, index) => {
+                  // console.log("-------->matched vertex of matched line", index, vertexRemove);
+
+                  if (vertexRemove !== vertexID) {
+                    toRemoveLines.push({obj: lineRemove, checked: false});
+                  }
+                })
+            }
+
+          }
+
+        });
+
+    });
+
+    return {layer, line};
+
   });
 
-  return {layer, line};
+  rebuiltLine(layer, toRemoveLines);
+
+}
+
+
+export function rebuiltLine(layer, toRemoveLines) {
+
+  let toDeleteLines = toRemoveLines;
+
+  let pairs = [];
+
+  for (let lineFixed = 0; lineFixed < toDeleteLines.length; lineFixed++) {
+    // console.log("0");
+    for (let line = 0; line < toDeleteLines.length; line++) {
+      // console.log("1");
+      for (let vertexFixed = 0; vertexFixed < toDeleteLines[line].obj.toJS().vertices.length; vertexFixed++) {
+        // console.log("2");
+        for (let vertex = 0; vertex < toDeleteLines[line].obj.toJS().vertices.length; vertex++) {
+          // console.log("3");
+          if (toDeleteLines[lineFixed].obj.id !== toDeleteLines[line].obj.id && !toDeleteLines[lineFixed].checked && !toDeleteLines[line].checked) {
+            // console.log("4");
+            if (toDeleteLines[lineFixed].obj.vertices[vertexFixed] === toDeleteLines[line].obj.vertices[vertex]) {
+              // console.log("5");
+              toDeleteLines[lineFixed].checked = true;
+              toDeleteLines[line].checked = true;
+              pairs.push([toDeleteLines[lineFixed], toDeleteLines[line]]);
+            }
+          }
+        }
+      }
+    }
+  }
+
+
+  let singleVertex = [];
+  let doubleVertex = [];
+  let pairVertices = [];
+
+  for (let pair = 0; pair < pairs.length; pair++) {
+    for (let el = 0; el < pairs[pair].length; el++) {
+      let vertices = pairs[pair][el].obj.toJS().vertices;
+      for (let vertex = 0; vertex < vertices.length; vertex++) {
+        let vertexToFind = layer.vertices.get(vertices[vertex]);
+        singleVertex.push(vertexToFind);
+      }
+
+      doubleVertex.push(singleVertex);
+      singleVertex = [];
+    }
+    pairVertices.push(doubleVertex);
+    doubleVertex = [];
+  }
+
+  if (pairVertices !== undefined) {
+
+    for (let i = 0; i < pairVertices.length; i++) {
+
+      let intersectionType = Geometry.intersectionFromTwoLineSegment(
+        pairVertices[i][0][0], pairVertices[i][0][1], pairVertices[i][1][0], pairVertices[i][1][1]
+      );
+      console.log(intersectionType.type);
+    }
+
+  }
+
+
+
+
 }
 
 export function splitLine(layer, lineID, x, y, catalog) {
   let line0, line1;
+
+  console.log("splitLine", lineID, x, y);
 
   layer = layer.withMutations(layer => {
     let line = layer.getIn(['lines', lineID]);
@@ -71,6 +187,9 @@ export function splitLine(layer, lineID, x, y, catalog) {
 
     ({line: line0} = addLine(layer, line.type, x0, y0, x, y, catalog, line.properties));
     ({line: line1} = addLine(layer, line.type, x1, y1, x, y, catalog, line.properties));
+
+    console.log("splitLine", line0.toJS());
+    console.log("splitLine", line1.toJS());
 
     let splitPointOffset = Geometry.pointPositionOnLineSegment(x0, y0, x1, y1, x, y);
     let minVertex = Geometry.minVertex(v0, v1);
@@ -236,10 +355,12 @@ export function removeVertex(layer, vertexID, relatedPrototype, relatedID) {
     return related.delete(index);
   });
 
+  // console.log("removeVertex", vertexID);
+
   layer =
     vertex.areas.size || vertex.lines.size ?
-    layer.setIn(['vertices', vertex.id], vertex) :
-    layer.deleteIn(['vertices', vertex.id]);
+      layer.setIn(['vertices', vertex.id], vertex) :
+      layer.deleteIn(['vertices', vertex.id]);
 
   return {layer, vertex};
 }

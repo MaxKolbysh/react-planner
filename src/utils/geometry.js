@@ -103,7 +103,7 @@ export function intersectionFromTwoLineSegment(p1, p2, p3, p4) {
 
       let comparator = (pa, pb) => pa.x === pb.x ? pa.y - pb.y : pa.x - pb.x;
       let line0 = [p1, p2].sort(comparator);
-      let line1 = [p3.toJS(), p4.toJS()].sort(comparator);
+      let line1 = [p3, p4].sort(comparator);
 
       let [lineSX, lineDX] = [line0, line1].sort((lineA, lineB) => comparator(lineA[0], lineB[0]));
 
